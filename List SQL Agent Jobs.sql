@@ -45,14 +45,12 @@ select
 		when jh.run_date = 0 then 'Never been run'
 		when jh.run_date is null then 'Never been run'
 		else 
-			--cast(
 			stuff(stuff(cast(jh.run_date as char(8)), 5, 0, '/'), 8, 0, '/')
 			+ ' ' 
 			+ stuff(stuff(right('000000' + cast(jh.run_time as varchar(6)), 6), 3, 0, ':'), 6, 0, ':')
-			-- as datetime)
 	 end as 'Last Run Date/Time'
 
-	,stuff(stuff(right('000000' + cast(jh.run_duration as varchar(6)),  6), 3, 0, ':'), 6, 0, ':') as 'Last Run Duration (hh:mm:ss)'
+	,stuff(stuff(right('000000' + cast(jh.run_duration as varchar(6)),  6), 3, 0, ':'), 6, 0, ':') 'Last Run Duration (hh:mm:ss)'
 
 	,case jh.run_status 
 		when 0 then 'Failed'
