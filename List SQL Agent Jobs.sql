@@ -1,5 +1,18 @@
 use msdb
 
+if object_id('tempdb..#mostRecentRunOfEachJob') is not null
+	drop table #mostRecentRunOfEachJob
+
+select * 
+into #mostRecentRunOfEachJob
+from sysjobhistory 
+where step_id = 0 
+  and (convert(nvarchar(50), job_id) + ' ' + convert(nvarchar(20), run_date) + ' ' + right('000000' + convert(nvarchar(6), run_time), 6)) in 
+	(select convert(nvarchar(50), job_id) + ' ' + max(convert(nvarchar(20), run_date) + ' ' + right('000000' + convert(nvarchar(6), run_time), 6))
+	from sysjobhistory 
+	where step_id = 0 
+	group by job_id)
+
 select
 	@@ServerName as 'Server'
 	,jobs.name as 'Job Name'
@@ -7,30 +20,26 @@ select
 	,(select count(*) from sysjobsteps as steps where steps.job_id = jobs.job_id) as 'Steps'
 	,(select count(*) from sysjobschedules as js 
 		left outer join sysschedules as sched on js.schedule_id = sched.schedule_id 
-		where 
-		js.job_id = jobs.job_id ) as 'Schedules'
+		where js.job_id = jobs.job_id) as 'Schedules'
 	,(select count(*) from sysjobschedules as js 
 		left outer join sysschedules as sched on js.schedule_id = sched.schedule_id 
-		where sched.enabled = 1
-		and 
-		js.job_id = jobs.job_id ) as 'Enabled Schedules'
-
+		where sched.enabled = 1	and js.job_id = jobs.job_id ) as 'Enabled Schedules'
 	,SUSER_SNAME(jobs.owner_sid) as 'Job Owner'
 	,case categories.name when '[Uncategorized (Local)]' then '' else categories.name end as 'Job Category'
 	,case jobs.description when 'No description available.' then '' else jobs.description end as 'Job Description'
 	,case jobs.notify_level_email 
-			when 0 then '' -- Never / None
-			when 1 then 'on Success'
-			when 2 then 'on Failure'
-			when 3 then 'on Completion (Success or Fail)'
-		end as 'Email Notify Level'
+		when 0 then '' -- Never / None
+		when 1 then 'on Success'
+		when 2 then 'on Failure'
+		when 3 then 'on Completion (Success or Fail)'
+	 end as 'Email Notify Level'
 	,case 
-			when jobs.notify_email_operator_id = 0 then '' 
-			when operators.enabled = 0 then '(Disabled) ' + operators.email_address 
-			else operators.email_address end as 'Email to Notify'
+		when jobs.notify_email_operator_id = 0 then '' 
+		when operators.enabled = 0 then '(Disabled) ' + operators.email_address 
+		else operators.email_address end as 'Email to Notify'
 
-    ,jobs.date_created as 'Created on'
-    ,jobs.date_modified as 'Last Modified on'
+	,jobs.date_created as 'Created on'
+	,jobs.date_modified as 'Last Modified on'
 
 	,case
 		when jh.run_date = 0 then 'Never been run'
@@ -41,7 +50,7 @@ select
 			+ ' ' 
 			+ stuff(stuff(right('000000' + cast(jh.run_time as varchar(6)), 6), 3, 0, ':'), 6, 0, ':')
 			-- as datetime)
-		end as 'Last Run Date/Time'
+	 end as 'Last Run Date/Time'
 
 	,stuff(stuff(right('000000' + cast(jh.run_duration as varchar(6)),  6), 3, 0, ':'), 6, 0, ':') as 'Last Run Duration (hh:mm:ss)'
 
@@ -59,11 +68,6 @@ from
 	sysjobs as jobs 
 	left join syscategories as categories on categories.category_id = jobs.category_id
 	left join sysoperators as operators on jobs.notify_email_operator_id = operators.id
-	left join 
-		(select * from sysjobhistory 
-		 where step_id = 0 and (convert(nvarchar(50), job_id) + ' ' + convert(nvarchar(20), run_date) + ' ' + right('000000' + convert(nvarchar(6), run_time), 6)) IN 
-				(select convert(nvarchar(50), job_id) + ' ' + MAX(convert(nvarchar(20), run_date) + ' ' + right('000000' + convert(nvarchar(6), run_time), 6))
-				   from sysjobhistory where step_id = 0 group by job_id)) 
-		as jh on jh.job_id = jobs.job_id
+	left join #mostRecentRunOfEachJob as jh on jh.job_id = jobs.job_id
 
 order by jobs.name
