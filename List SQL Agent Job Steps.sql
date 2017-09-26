@@ -54,14 +54,12 @@ select
 	,case steps.last_run_date
 		when 0 then NULL
 		else 
-			cast(
-				cast(steps.last_run_date as CHAR(8))
-				+ ' ' 
-				+ stuff(
-					stuff(right('000000' + cast(steps.last_run_time as varchar(6)), 6)
-						, 3, 0, ':')
-					, 6, 0, ':')
-				as datetime)
+			stuff(stuff(cast(steps.last_run_date as char(8)), 5, 0, '/'), 8, 0, '/')
+			+ ' ' 
+			+ stuff(
+				stuff(right('000000' + cast(steps.last_run_time as varchar(6)), 6)
+					, 3, 0, ':')
+				, 6, 0, ':')
 	 end as 'Last Run Date/Time'
 	,stuff(
 		stuff(right('000000' + cast(steps.last_run_duration as varchar(6)),  6)
