@@ -29,9 +29,9 @@ select
 	,case jobs.description when 'No description available.' then '' else jobs.description end as 'Job Description'
 	,case jobs.notify_level_email 
 		when 0 then '' -- Never / None
-		when 1 then 'on Success'
-		when 2 then 'on Failure'
-		when 3 then 'on Completion (Success or Fail)'
+		when 1 then 'On Success'
+		when 2 then 'On Failure'
+		when 3 then 'On Completion (Success or Fail)'
 	 end as 'Email Notify Level'
 	,case 
 		when jobs.notify_email_operator_id = 0 then '' 
