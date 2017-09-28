@@ -51,8 +51,9 @@ select
 
 
 	-- Add Last Run details
-	,case steps.last_run_date
-		when 0 then NULL
+	,case 
+		when steps.last_run_date = 0 then 'No info' 
+		when steps.last_run_date is null then 'No info'
 		else 
 			stuff(stuff(cast(steps.last_run_date as char(8)), 5, 0, '/'), 8, 0, '/')
 			+ ' ' 
@@ -61,20 +62,27 @@ select
 					, 3, 0, ':')
 				, 6, 0, ':')
 	 end as 'Last Run Date/Time'
-	,stuff(
-		stuff(right('000000' + cast(steps.last_run_duration as varchar(6)),  6)
-			, 3, 0, ':')
-		, 6, 0, ':')
-	 as 'Last Run Duration (hh:mm:ss)'
-	,case steps.[last_run_outcome]
-		when 0 then 'Failed'
-		when 1 then 'Succeeded'
-		when 2 then 'Retry'
-		when 3 then 'Canceled'
-		when 5 then 'Unknown'
+	,case 
+		when (steps.last_run_date = 0 or steps.last_run_date is null) and steps.last_run_duration = 0 then ''
+		else 
+			stuff(
+				stuff(right('000000' + cast(steps.last_run_duration as varchar(6)),  6)
+					, 3, 0, ':')
+				, 6, 0, ':')
+	 end as 'Last Run Duration (hh:mm:ss)'
+	,case
+		when (steps.last_run_date = 0 or steps.last_run_date is null) and steps.last_run_outcome = 0 then ''
+		when steps.last_run_outcome = 0 then 'Failed'
+		when steps.last_run_outcome = 1 then 'Succeeded'
+		when steps.last_run_outcome = 2 then 'Retry'
+		when steps.last_run_outcome = 3 then 'Canceled'
+		when steps.last_run_outcome = 5 then 'Unknown'
 	 end as 'Last Run Status'
 	--,steps.last_run_retries as 'Last Run Retries'
-	,jh.message as 'Last Run Message'
+	,case 
+		when jh.message is null then ''
+		else jh.message 
+	 end as 'Last Run Message'
 
 from
 	sysjobsteps as steps
