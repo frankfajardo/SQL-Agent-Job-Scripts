@@ -24,8 +24,14 @@ select
 	,steps.step_id as 'Step Number'
 	,steps.step_name as 'Step Name'
 	,steps.subsystem as 'Step Type'
-	,proxies.name as 'Run As'
-	,steps.database_name as 'Database'
+	,case
+		when proxies.name is null then ''
+		else proxies.name
+	 end as 'Run As'
+	,case 
+		when steps.database_name is null then ''
+		else steps.database_name
+	 end as 'Database'
 	,steps.command as 'Command'
 
 	,case steps.on_success_action
@@ -36,7 +42,7 @@ select
 					+ quoteName(cast(steps.on_success_step_id as varchar(3))) 
 					+ ' ' 
 					+ onSuccess.step_name
-	 end as 'on Success'
+	 end as 'On Success'
 	,steps.retry_attempts as 'Retry Attempts'
 	,steps.retry_interval as 'Retry Interval (minutes)'
 	,case steps.on_fail_action
@@ -47,7 +53,7 @@ select
 					+ quoteName(cast(steps.on_fail_step_id as varchar(3))) 
 					+ ' ' 
 					+ onFailure.step_name
-	 end as 'on Failure'
+	 end as 'On Failure'
 
 
 	-- Add Last Run details
