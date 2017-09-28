@@ -17,11 +17,11 @@ select
 	@@ServerName as 'Server'
 	,jobs.name as 'Job Name'
 	,case when jobs.[enabled] = 1 then 'Yes' else 'No' end as 'Job Enabled'
-	,(select count(*) from sysjobsteps as steps where steps.job_id = jobs.job_id) as 'Steps'
-	,(select count(*) from sysjobschedules as js 
+	,(select case count(*) when 0 then 'None' else convert(varchar, count(*)) end from sysjobsteps as steps where steps.job_id = jobs.job_id) as 'Steps'
+	,(select case count(*) when 0 then 'None' else convert(varchar, count(*)) end from sysjobschedules as js 
 		left outer join sysschedules as sched on js.schedule_id = sched.schedule_id 
 		where js.job_id = jobs.job_id) as 'Schedules'
-	,(select count(*) from sysjobschedules as js 
+	,(select case count(*) when 0 then 'None' else convert(varchar, count(*)) end from sysjobschedules as js 
 		left outer join sysschedules as sched on js.schedule_id = sched.schedule_id 
 		where sched.enabled = 1	and js.job_id = jobs.job_id ) as 'Enabled Schedules'
 	,SUSER_SNAME(jobs.owner_sid) as 'Job Owner'
@@ -42,25 +42,33 @@ select
 	,jobs.date_modified as 'Last Modified on'
 
 	,case
-		when jh.run_date = 0 then 'Never been run'
-		when jh.run_date is null then 'Never been run'
+		when jh.run_date = 0 then 'No info' 
+		when jh.run_date is null then 'No info'
 		else 
 			stuff(stuff(cast(jh.run_date as char(8)), 5, 0, '/'), 8, 0, '/')
 			+ ' ' 
 			+ stuff(stuff(right('000000' + cast(jh.run_time as varchar(6)), 6), 3, 0, ':'), 6, 0, ':')
 	 end as 'Last Run Date/Time'
 
-	,stuff(stuff(right('000000' + cast(jh.run_duration as varchar(6)),  6), 3, 0, ':'), 6, 0, ':') 'Last Run Duration (hh:mm:ss)'
+	,case 
+		when jh.run_duration is null then ''
+		else
+			stuff(stuff(right('000000' + cast(jh.run_duration as varchar(6)),  6), 3, 0, ':'), 6, 0, ':') 
+	 end as 'Last Run Duration (hh:mm:ss)'
 
-	,case jh.run_status 
-		when 0 then 'Failed'
-		when 1 then 'Succeded' 
-		when 2 then 'Retry' 
-		when 3 then 'Cancelled' 
-		when 4 then 'In Progress' 
+	,case 
+		when jh.run_status is null then ''
+		when jh.run_status = 0 then 'Failed'
+		when jh.run_status = 1 then 'Succeded' 
+		when jh.run_status = 2 then 'Retry' 
+		when jh.run_status = 3 then 'Cancelled' 
+		when jh.run_status = 4 then 'In Progress' 
 	 end as 'Last Run Status'
 
-	,jh.message as 'Last Run Message'
+	,case 
+		when jh.message is null then ''
+		else jh.message 
+	 end as 'Last Run Message'
 
 from
 	sysjobs as jobs 
