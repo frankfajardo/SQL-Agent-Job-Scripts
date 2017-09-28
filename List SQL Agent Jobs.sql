@@ -1,79 +1,102 @@
 use msdb
 
-if object_id('tempdb..#mostRecentRunOfEachJob') is not null
-	drop table #mostRecentRunOfEachJob
+if object_id('tempdb..#mostRecentRunOfEachStep') is not null
+	drop table #mostRecentRunOfEachStep
 
 select * 
-into #mostRecentRunOfEachJob
+into #mostRecentRunOfEachStep
 from sysjobhistory 
-where step_id = 0 
-  and (convert(nvarchar(50), job_id) + ' ' + convert(nvarchar(20), run_date) + ' ' + right('000000' + convert(nvarchar(6), run_time), 6)) in 
-	(select convert(nvarchar(50), job_id) + ' ' + max(convert(nvarchar(20), run_date) + ' ' + right('000000' + convert(nvarchar(6), run_time), 6))
+where step_id <> 0 
+  and (convert(nvarchar(50), job_id) + ' ' + convert(nvarchar(50), step_id) + ' ' + convert(nvarchar(20), run_date) + ' ' + right('000000' + convert(nvarchar(6), run_time), 6)) in 
+	(select convert(nvarchar(50), job_id) + ' ' + convert(nvarchar(50), step_id) + ' ' + max(convert(nvarchar(20), run_date) + ' ' + right('000000' + convert(nvarchar(6), run_time), 6))
 	from sysjobhistory 
-	where step_id = 0 
-	group by job_id)
+	where step_id <> 0 
+	group by job_id, step_id)
 
 select
 	@@ServerName as 'Server'
 	,jobs.name as 'Job Name'
-	,case when jobs.[enabled] = 1 then 'Yes' else 'No' end as 'Job Enabled'
-	,(select case count(*) when 0 then 'None' else convert(varchar, count(*)) end from sysjobsteps as steps where steps.job_id = jobs.job_id) as 'Steps'
-	,(select case count(*) when 0 then 'None' else convert(varchar, count(*)) end from sysjobschedules as js 
-		left outer join sysschedules as sched on js.schedule_id = sched.schedule_id 
-		where js.job_id = jobs.job_id) as 'Schedules'
-	,(select case count(*) when 0 then 'None' else convert(varchar, count(*)) end from sysjobschedules as js 
-		left outer join sysschedules as sched on js.schedule_id = sched.schedule_id 
-		where sched.enabled = 1	and js.job_id = jobs.job_id ) as 'Enabled Schedules'
-	,SUSER_SNAME(jobs.owner_sid) as 'Job Owner'
-	,case categories.name when '[Uncategorized (Local)]' then '' else categories.name end as 'Job Category'
-	,case jobs.description when 'No description available.' then '' else jobs.description end as 'Job Description'
-	,case jobs.notify_level_email 
-		when 0 then '' -- Never / None
-		when 1 then 'On Success'
-		when 2 then 'On Failure'
-		when 3 then 'On Completion (Success or Fail)'
-	 end as 'Email Notify Level'
-	,case 
-		when jobs.notify_email_operator_id = 0 then '' 
-		when operators.enabled = 0 then '(Disabled) ' + operators.email_address 
-		else operators.email_address end as 'Email to Notify'
+	--,case when jobs.[enabled] = 1 then 'Yes' else 'No' end as 'Job Enabled'
+	--,SUSER_SNAME(jobs.owner_sid) as 'Job Owner'
+	--,categories.name as 'Job Category'
+	--,jobs.description as 'Job Description'
 
-	,jobs.date_created as 'Created on'
-	,jobs.date_modified as 'Last Modified on'
-
+	,steps.step_id as 'Step Number'
+	,steps.step_name as 'Step Name'
+	,steps.subsystem as 'Step Type'
 	,case
-		when jh.run_date = 0 then 'No info' 
-		when jh.run_date is null then 'No info'
+		when proxies.name is null then ''
+		else proxies.name
+	 end as 'Run As'
+	,case 
+		when steps.database_name is null then ''
+		else steps.database_name
+	 end as 'Database'
+	,steps.command as 'Command'
+
+	,case steps.on_success_action
+		when 1 then 'Quit the job reporting success'
+		when 2 then 'Quit the job reporting failure'
+		when 3 then 'Go to the next step'
+		when 4 then 'Go to Step: ' 
+					+ quoteName(cast(steps.on_success_step_id as varchar(3))) 
+					+ ' ' 
+					+ onSuccess.step_name
+	 end as 'On Success'
+	,steps.retry_attempts as 'Retry Attempts'
+	,steps.retry_interval as 'Retry Interval (minutes)'
+	,case steps.on_fail_action
+		when 1 then 'Quit the job reporting success'
+		when 2 then 'Quit the job reporting failure'
+		when 3 then 'Go to the next step'
+		when 4 then 'Go to Step: ' 
+					+ quoteName(cast(steps.on_fail_step_id as varchar(3))) 
+					+ ' ' 
+					+ onFailure.step_name
+	 end as 'On Failure'
+
+
+	-- Add Last Run details
+	,case 
+		when steps.last_run_date = 0 then 'No info' 
+		when steps.last_run_date is null then 'No info'
 		else 
-			stuff(stuff(cast(jh.run_date as char(8)), 5, 0, '/'), 8, 0, '/')
+			stuff(stuff(cast(steps.last_run_date as char(8)), 5, 0, '/'), 8, 0, '/')
 			+ ' ' 
-			+ stuff(stuff(right('000000' + cast(jh.run_time as varchar(6)), 6), 3, 0, ':'), 6, 0, ':')
+			+ stuff(
+				stuff(right('000000' + cast(steps.last_run_time as varchar(6)), 6)
+					, 3, 0, ':')
+				, 6, 0, ':')
 	 end as 'Last Run Date/Time'
-
 	,case 
-		when jh.run_duration is null then ''
-		else
-			stuff(stuff(right('000000' + cast(jh.run_duration as varchar(6)),  6), 3, 0, ':'), 6, 0, ':') 
+		when (steps.last_run_date = 0 or steps.last_run_date is null) and steps.last_run_duration = 0 then ''
+		else 
+			stuff(
+				stuff(right('000000' + cast(steps.last_run_duration as varchar(6)),  6)
+					, 3, 0, ':')
+				, 6, 0, ':')
 	 end as 'Last Run Duration (hh:mm:ss)'
-
-	,case 
-		when jh.run_status is null then ''
-		when jh.run_status = 0 then 'Failed'
-		when jh.run_status = 1 then 'Succeded' 
-		when jh.run_status = 2 then 'Retry' 
-		when jh.run_status = 3 then 'Cancelled' 
-		when jh.run_status = 4 then 'In Progress' 
+	,case
+		when (steps.last_run_date = 0 or steps.last_run_date is null) and steps.last_run_outcome = 0 then ''
+		when steps.last_run_outcome = 0 then 'Failed'
+		when steps.last_run_outcome = 1 then 'Succeeded'
+		when steps.last_run_outcome = 2 then 'Retry'
+		when steps.last_run_outcome = 3 then 'Canceled'
+		when steps.last_run_outcome = 5 then 'Unknown'
 	 end as 'Last Run Status'
-
+	--,steps.last_run_retries as 'Last Run Retries'
 	,case 
 		when jh.message is null then ''
 		else jh.message 
 	 end as 'Last Run Message'
 
 from
-	sysjobs as jobs 
+	sysjobsteps as steps
+	inner join sysjobs as jobs on steps.job_id = jobs.job_id
+	left join sysjobsteps as onSuccess on steps.job_id = onSuccess.job_id and steps.on_success_step_id = onSuccess.step_id
+	left join sysjobsteps as onFailure on steps.job_id = onFailure.job_id and steps.on_fail_step_id = onFailure.step_id
+	left join sysproxies as proxies on steps.proxy_id = proxies.proxy_id
 	left join syscategories as categories on categories.category_id = jobs.category_id
-	left join sysoperators as operators on jobs.notify_email_operator_id = operators.id
-	left join #mostRecentRunOfEachJob as jh on jh.job_id = jobs.job_id
+	left join #mostRecentRunOfEachStep as jh on jh.job_id = steps.job_id and jh.step_id = steps.step_id
 
-order by jobs.name
+order by jobs.name, steps.step_id
